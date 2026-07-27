@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>금집부쌤의 서울시 아파트 실거래 대시보드</title>
+  <link rel="stylesheet" href="style.css?v=29" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🏙️</text></svg>" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-left">
+      <img class="geumjib-badge" src="assets/geumjib-logo.png?v=2" alt="금집부쌤"
+           onerror="this.classList.add('img-missing')" />
+      <div class="brand-titles">
+        <h1>금집부쌤의 서울시 아파트<br />실거래 대시보드 <span class="brand-tag">구·동별 구분</span></h1>
+        <p class="brand-sub">국토교통부 실거래가 · 서울 열린데이터광장 · KOSIS · 한국부동산원(구 단위 공식 지수) · 서울시 25개 자치구</p>
+      </div>
+    </div>
+    <span class="brand-sep" aria-hidden="true"></span>
+    <div class="brand-plate">
+      <img class="logo" src="assets/banpo114-logo.png" alt="반포114공인중개사 · 010-9442-2027"
+           onerror="this.classList.add('img-missing')" />
+      <span class="brand-plate-fallback">반포<b>114</b>공인중개사 · 010-9442-2027</span>
+      <img class="mascot" src="assets/geumddogi.png" alt="반포114공인중개사 캐릭터 금똑이"
+           onerror="this.classList.add('img-missing')" />
+    </div>
+  </div>
+  <div class="topbar-right">
+    <button type="button" id="printAllBtn" class="print-btn">🖨️ 전체 인쇄</button>
+    <div class="fetched" id="fetchedAt"></div>
+  </div>
+</header>
+
+<!-- ─────────────── 조회 조건 ─────────────── -->
+<section class="controls" aria-label="조회 조건">
+  <div class="ctl">
+    <label>집계 기준</label>
+    <div class="seg" id="granularity" role="group">
+      <button class="seg-btn is-on" data-g="week">주간</button>
+      <button class="seg-btn" data-g="month">월간</button>
+    </div>
+  </div>
+
+  <div class="ctl">
+    <label for="startDate">시작일</label>
+    <input type="date" id="startDate" />
+  </div>
+
+  <div class="ctl">
+    <label for="endDate">종료일</label>
+    <input type="date" id="endDate" />
+  </div>
+
+  <div class="ctl">
+    <label for="guSelect">자치구</label>
+    <select id="guSelect"></select>
+  </div>
+
+  <div class="ctl">
+    <label>법정동 (선택한 구 내)</label>
+    <div class="seg seg-wrap seg-pill" id="dongFilter" role="group">
+      <button class="seg-btn is-on" data-d="all">전체</button>
+    </div>
+  </div>
+
+  <div class="ctl ctl-grow">
+    <label>빠른 기간</label>
+    <div class="presets" id="presets">
+      <button data-preset="4w">최근 4주</button>
+      <button data-preset="3m">최근 3개월</button>
+      <button data-preset="6m">최근 6개월</button>
+      <button data-preset="1y">최근 1년</button>
+      <button data-preset="2y">최근 2년</button>
+    </div>
+  </div>
+
+  <div class="ctl ctl-actions">
+    <button id="loadBtn" class="primary">조회</button>
+    <button id="refreshBtn" class="ghost" title="캐시를 무시하고 공공데이터포털에서 다시 받아옵니다">↻ 새로고침</button>
+  </div>
+</section>
+
+<div id="status" class="status" hidden></div>
+
+<main id="dash" hidden>
+
+  <!-- 화면에는 안 보이고, "전체 인쇄" 시 1페이지 맨 위에 어느 지역·기간 리포트인지 표시 -->
+  <div id="printPageHeader" class="print-only"></div>
+
+  <!-- ─────────────── 요약 KPI ─────────────── -->
+  <section class="kpis" id="kpis"></section>
+
+  <!-- ─────────────── 1. 가격지수 ─────────────── -->
+  <section class="card" id="cardIndex">
+    <div class="card-head">
+      <div>
+        <h2>1. 아파트 실거래 가격지수</h2>
+        <p class="card-sub" id="indexSub"></p>
+      </div>
+      <div class="card-tools">
+        <div class="seg small" id="indexMode">
+          <button class="seg-btn is-on" data-m="index">지수 (기준=100)</button>
+          <button class="seg-btn" data-m="price">평당가 (만원)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend" id="indexLegend"></div>
+    <div class="chart-wrap"><div id="indexChart"></div></div>
+    <div class="reb-index-panel" id="rebIndexPanel" hidden></div>
+
+    <p class="note">
+      선택한 기간의 실거래를 <b>주간/월간 구간</b>으로 나눠 <b>구간별 중위 평당가</b>를 계산하고,
+      데이터가 있는 <b>첫 구간을 100</b>으로 지수화합니다. (평 = 전용면적 ÷ 3.3058)
+      월세는 <b>환산보증금 = 보증금 + 월세 × 100</b> 기준으로 계산합니다.
+      거래가 없는 구간은 점을 찍지 않습니다.
+      <br />
+      ※ 위 그래프는 동 단위까지 반영되는 <b>자체 산출 지수</b>입니다. "공식(부동산원) 지수 비교" 버튼을 누르면
+      한국부동산원의 <b>공동주택 매매 실거래가격지수</b>(구 단위, 분기별, KOSIS 경유 공식 통계)를 함께 볼 수 있습니다.
+    </p>
+  </section>
+
+  <!-- ─────────────── 거래량 추이 ─────────────── -->
+  <section class="card" id="cardVolume">
+    <div class="card-head">
+      <div>
+        <h2>📊 거래량 추이</h2>
+        <p class="card-sub" id="volumeSub"></p>
+      </div>
+    </div>
+
+    <div class="legend" id="volumeLegend"></div>
+    <div class="chart-wrap"><div id="volumeChart"></div></div>
+
+    <p class="note">
+      선택한 기간·지역의 실거래를 <b>주간/월간 구간</b>별 <b>매매·전세·월세 건수</b>로 쌓아 표시합니다.
+      실거래 신고는 계약일로부터 30일 이내라 <b>최근 구간은 신고가 계속 들어와 건수가 늘어날 수 있습니다.</b>
+    </p>
+  </section>
+
+  <!-- ─────────────── 지도: TOP 10 위치 ─────────────── -->
+  <section class="card" id="cardMap">
+    <div class="card-head">
+      <div>
+        <h2>🗺️ TOP 10 위치 지도</h2>
+        <p class="card-sub">카카오맵 기반 실제 좌표 · 표에서 아파트를 클릭하면 위치가 표시됩니다</p>
+      </div>
+      <div class="geo-legend" id="geoLegend"></div>
+    </div>
+    <div class="geo-map-wrap">
+      <div id="geoMapKakao" class="geo-map-kakao" hidden></div>
+      <div id="geoMap"></div>
+    </div>
+    <div class="geo-map-tools">
+      <span class="geo-map-hint" id="geoMapHint">지도를 드래그·휠로 확대해 보세요</span>
+      <button type="button" class="geo-reset-btn" id="geoResetBtn" disabled>← 전체보기</button>
+    </div>
+    <p class="note">
+      카카오 지오코딩으로 각 단지의 실제 지번 주소를 좌표로 변환해 표시합니다(단지명 검색 결과로 대체되는 경우 포함).
+      아주 드물게 좌표를 찾지 못한 단지는 지도에 표시되지 않을 수 있습니다.
+    </p>
+  </section>
+
+  <!-- ─────────────── 2. 실거래가 TOP 10 ─────────────── -->
+  <section class="card" id="cardTopDeal">
+    <div class="card-head">
+      <div>
+        <h2>2. 아파트 실거래가 TOP 10</h2>
+        <p class="card-sub">선택 기간 내 거래 중 금액 상위 10건 · 클릭하면 위 지도에 위치가 표시됩니다</p>
+      </div>
+      <div class="seg small" id="topDealTab">
+        <button class="seg-btn is-on" data-t="sale">매매</button>
+        <button class="seg-btn" data-t="jeonse">전세</button>
+        <button class="seg-btn" data-t="monthly">월세</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table id="topDealTable"></table></div>
+  </section>
+
+  <!-- ─────────────── 3. 평당가격 TOP 10 ─────────────── -->
+  <section class="card" id="cardTopPyeong">
+    <div class="card-head">
+      <div>
+        <h2>3. 아파트 평당가격 TOP 10</h2>
+        <p class="card-sub">평당가 = 거래금액 ÷ (전용면적 ÷ 3.3058)</p>
+      </div>
+      <div class="seg small" id="topPyeongTab">
+        <button class="seg-btn is-on" data-t="sale">매매</button>
+        <button class="seg-btn" data-t="jeonse">전세</button>
+        <button class="seg-btn" data-t="monthly">월세</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table id="topPyeongTable"></table></div>
+  </section>
+
+  <!-- ─────────────── 평당가 상승률 TOP 10 ─────────────── -->
+  <section class="card" id="cardRateTop">
+    <div class="card-head">
+      <div>
+        <h2>📈 평당가 상승률 TOP 10</h2>
+        <p class="card-sub">선택 기간을 절반으로 나눠 <b>전반부→후반부 중위 평당가 변동률</b>이 큰 단지 순</p>
+      </div>
+      <div class="seg small" id="rateTab">
+        <button class="seg-btn is-on" data-t="sale">매매</button>
+        <button class="seg-btn" data-t="jeonse">전세</button>
+        <button class="seg-btn" data-t="monthly">월세</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table id="rateTopTable"></table></div>
+    <p class="note">
+      선택한 기간을 정확히 반으로 나눠, 각 단지의 <b>전반부·후반부 중위 평당가</b>를 비교합니다.
+      두 구간 모두 거래가 있는 단지만 계산되므로, <b>기간이 짧으면 비교 가능한 단지가 적어질 수 있습니다</b>
+      (3개월 이상 조회를 권장). 표본이 1~2건인 단지는 등락이 과장되어 보일 수 있습니다.
+    </p>
+  </section>
+
+  <!-- ─────────────── 4. 입지분석 ─────────────── -->
+  <section class="card" id="cardLocOnScreen">
+    <div class="card-head">
+      <div>
+        <h2>4. 입지분석</h2>
+        <p class="card-sub">항목을 클릭하면 상세 분석이 열립니다 (선택한 자치구 기준)</p>
+      </div>
+    </div>
+
+    <p class="loc-summary" id="locSummary"></p>
+
+    <div class="loc-grid" id="locGrid">
+      <button class="loc-tile" data-k="subway"><span class="ico">🚇</span><b>지하철</b><em>역세권·노선(실데이터)</em></button>
+      <button class="loc-tile" data-k="transport"><span class="ico">🛣️</span><b>교통</b><em>주요 핫스팟 실시간(일부 구)</em></button>
+      <button class="loc-tile" data-k="school"><span class="ico">🎓</span><b>학군</b><em>초·중·고(실데이터)</em></button>
+      <button class="loc-tile" data-k="life"><span class="ico">🏬</span><b>생활권·인구</b><em>공원·상권·인구(실데이터)</em></button>
+      <button class="loc-tile" data-k="develop"><span class="ico">🏗️</span><b>재건축·개발</b><em>정비사업</em></button>
+      <button class="loc-tile" data-k="data"><span class="ico">📊</span><b>데이터로 본 입지</b><em>단지별 평당가</em></button>
+    </div>
+
+    <div class="loc-detail" id="locDetail" hidden></div>
+
+    <p class="note">
+      ※ 「생활권·인구」는 서울 열린데이터광장(공원·상권) + KOSIS(인구·세대), 「지하철」은 카카오맵, 「학군」은
+      NEIS 학교 기본정보 실데이터를 구 단위로 보여줍니다. 「교통」은 서울시 실시간 도시데이터가 지정한
+      120개 주요 장소(강남역·홍대 등) 중 해당 구에 있는 곳만 실시간으로 보여줘 <b>일부 구에서만</b> 표시됩니다.
+      재건축은 신뢰할 수 있는 구·동 단위 공개 데이터를 아직 연결하지 못해 추후 제공 예정입니다.
+      「데이터로 본 입지」는 위 지역 필터(구+동)의 실거래로 계산됩니다.
+    </p>
+  </section>
+
+  <!-- 화면에는 안 보이고, "전체 인쇄" 클릭 시에만 입지분석 6개 탭 전체를 한 번에 채워 넣는다 -->
+  <div id="printLocAll" class="print-only"></div>
+
+  <footer class="foot">
+    데이터 출처: 국토교통부 아파트 매매/전월세 실거래가(공공데이터포털) · 서울 열린데이터광장(공원·상권) ·
+    KOSIS 국가통계포털(인구·세대·한국부동산원 공동주택 실거래가격지수) · 카카오(지도·지오코딩) ·
+    금액 단위는 만원 · 실거래 신고는 계약일로부터 30일 이내이므로 <b>최근 1~2개월 데이터는 계속 추가</b>됩니다.
+  </footer>
+</main>
+
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=e0f46aa5826e861cba007f4b3ff5d17c&autoload=false"></script>
+<script src="seoul-gu.js?v=11"></script>
+<script src="geo-coords.js?v=11"></script>
+<script src="static-data.js"></script>
+  <script src="static-shim.js"></script>
+  <script src="app.js?v=11"></script>
+</body>
+</html>
