@@ -671,9 +671,16 @@ let DONG_CENTER = null;
 
 function geoKey(d) { return `${d.gu}|${d.dong}|${d.apt}`; }
 
+let kakaoWaitAttempts = 0;
 function initKakaoMapIfPossible() {
   if (kakaoInitStarted) return;
-  if (typeof kakao === 'undefined' || !kakao.maps) return;
+  if (typeof kakao === 'undefined' || !kakao.maps) {
+    // 카카오맵 SDK(<script src="https://dapi.kakao.com/...">)는 별도 네트워크 요청이라
+    // 데이터 로딩(특히 정적 스냅샷처럼 즉시 응답되는 경우)보다 늦게 끝날 수 있다.
+    // 한 번만 확인하고 포기하면 그 경우 지도가 영영 안 뜨므로, 잠시 재시도한다.
+    if (kakaoWaitAttempts++ < 40) setTimeout(initKakaoMapIfPossible, 250);
+    return;
+  }
   kakaoInitStarted = true;
   kakao.maps.load(() => {
     const container = $('#geoMapKakao');
