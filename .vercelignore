@@ -1,0 +1,11 @@
+# Vercel에는 정적 빌드본(docs/)만 있으면 된다.
+# 로컬 실행용 파이썬 서버·개발용 web/ 원본·캐시는 업로드하지 않는다.
+.cache/
+__pycache__/
+*.py
+*.pyc
+.env
+.env.example
+실행하기.bat
+web/
+share/
