@@ -10,6 +10,12 @@ const state = {
   dong: 'all',           // 'all' | 실제 등장한 법정동 이름(로드 후 동적으로 채워짐)
   indexMode: 'index',    // 'index' | 'price'
   indexVisible: { sale: true, jeonse: true, monthly: true },
+  indexView: 'type',     // 'type'=매매/전세/월세 겹쳐보기 | 'gu'=구별 비교 | 'dong'=동별 비교
+  cmpType: 'sale',       // 비교 모드에서 비교할 거래 유형
+  cmpSel: { gu: [], dong: [] },   // 비교 모드에서 선택된 지역(최대 6개)
+  cmpBase: true,         // 기준선(서울시/해당 구 전체 평균) 표시
+  cmpGhost: true,        // 선택 안 한 나머지 지역을 옅은 회색으로 함께 표시(큰 흐름 파악용, 기본 켜짐)
+  topTab: 'deal',        // TOP10 카드 전환: 'deal' | 'pyeong' | 'rate'
   showRebIndex: false,   // 한국부동산원 공식 지수(구 단위, 분기) 보조 표시 여부
   rebIndex: null,        // { gu, unit, points } | null | 'loading'
   topDealType: 'sale',
@@ -198,23 +204,196 @@ function buildSeries() {
 }
 
 function renderIndex() {
-  const sub = state.granularity === 'week' ? '주간(월요일 시작) 구간별' : '월간 구간별';
+  const gran = state.granularity === 'week' ? '주간(월요일 시작) 구간별' : '월간 구간별';
   const modeTxt = state.indexMode === 'index' ? '중위 평당가 지수' : '중위 평당가';
-  const regionTxt = state.gu === 'all' ? '서울시 전체' : (state.dong === 'all' ? state.gu : `${state.gu} ${state.dong}`);
-  $('#indexSub').textContent = `${sub} ${modeTxt} · ${regionTxt}`;
 
-  const { keys, series } = buildSeries();
+  $$('#indexView .seg-btn').forEach((b) => b.classList.toggle('is-on', b.getAttribute('data-v') === state.indexView));
+  $('#cmpPanel').hidden = state.indexView === 'type';
 
-  $('#indexLegend').innerHTML = SERIES.map((s) => {
-    const n = series[s.key].length;
-    const on = state.indexVisible[s.key];
-    return `<button type="button" class="lg lg-btn ${on ? 'is-on' : 'is-off'}" data-s="${s.key}">
-      <span class="sw" style="background:${s.color}"></span>${s.label} <span class="dim">(${n})</span>
+  if (state.indexView === 'type') {
+    const regionTxt = state.gu === 'all' ? '서울시 전체' : (state.dong === 'all' ? state.gu : `${state.gu} ${state.dong}`);
+    $('#indexSub').textContent = `${gran} ${modeTxt} · ${regionTxt}`;
+
+    const { keys, series } = buildSeries();
+    $('#indexLegend').innerHTML = SERIES.map((s) => {
+      const n = series[s.key].length;
+      const on = state.indexVisible[s.key];
+      return `<button type="button" class="lg lg-btn ${on ? 'is-on' : 'is-off'}" data-s="${s.key}">
+        <span class="sw" style="background:${s.color}"></span>${s.label} <span class="dim">(${n})</span>
+      </button>`;
+    }).join('') + rebToggleHtml();
+
+    drawChart(keys, series, SERIES.filter((s) => state.indexVisible[s.key]));
+    renderRebIndexPanel();
+    return;
+  }
+
+  renderCmpIndex(gran, modeTxt);
+}
+
+/* ── 구별/동별 비교 모드 ────────────────────────────────────────────
+   같은 그래프 위에 여러 지역(자치구 또는 법정동)의 추세를 최대 6개까지 겹쳐 그린다.
+   지수(기준=100)는 "각 지역의 첫 거래 구간"을 각각 100으로 잡으므로 선의 기울기끼리 바로 비교된다. */
+const CMP_MAX = 6;
+const CMP_COLORS = ['#4f7fe6', '#e2703a', '#3f9e6d', '#9b59d0', '#c94f6d', '#2f9bb5'];
+const CMP_BASE_KEY = '__base__';       // 기준선(전체 평균) 시리즈 키
+const CMP_BASE_COLOR = '#2b3245';
+const GHOST_CAP = 40;                  // 회색 참고선은 거래 많은 40곳까지만(선이 너무 많으면 오히려 안 보임)
+
+// "서로 연관성이 있는" 자치구 묶음 — 시장이 함께 움직이는 권역 위주로 미리 넣어둔 빠른 선택
+const GU_PRESETS = [
+  { label: '강남 3구', gus: ['강남구', '서초구', '송파구'] },
+  { label: '마·용·성', gus: ['마포구', '용산구', '성동구'] },
+  { label: '노·도·강', gus: ['노원구', '도봉구', '강북구'] },
+  { label: '금·관·구', gus: ['금천구', '관악구', '구로구'] },
+  { label: '한강벨트', gus: ['광진구', '영등포구', '동작구', '강동구'] },
+  { label: '서남권', gus: ['양천구', '강서구', '구로구', '영등포구'] },
+  { label: '도심권', gus: ['종로구', '중구', '용산구'] },
+];
+
+function cmpSel() { return state.cmpSel[state.indexView] || []; }
+function cmpGroupKey(d) {
+  if (state.indexView === 'gu') return d.gu;
+  return state.gu === 'all' ? `${d.gu} ${d.dong}` : d.dong;
+}
+
+// 현재 거래유형 기준으로 비교 가능한 지역과 거래 건수(많은 순)
+function cmpGroups() {
+  const m = new Map();
+  for (const d of state.deals) {
+    if (d.type !== state.cmpType) continue;
+    const k = cmpGroupKey(d);
+    m.set(k, (m.get(k) || 0) + 1);
+  }
+  return [...m.entries()]
+    .map(([name, n]) => ({ name, n }))
+    .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name, 'ko'));
+}
+
+// 선택이 비었거나(첫 진입) 지금 데이터에 없는 지역만 남았으면 거래가 많은 3곳을 자동 선택한다.
+function ensureCmpSel(groups) {
+  const valid = new Set(groups.map((g) => g.name));
+  let sel = cmpSel().filter((g) => valid.has(g));
+  if (!sel.length) sel = groups.slice(0, 3).map((g) => g.name);
+  state.cmpSel[state.indexView] = sel;
+  return sel;
+}
+
+// 기준선 = 지금 불러온 전체 데이터의 구간별 중위 평당가.
+//   구별 비교(전체 서울) → "서울시 전체 평균", 동별 비교(예: 서초구) → "서초구 전체 평균"
+function cmpBaseLabel() {
+  return state.gu === 'all' ? '서울시 전체 평균' : `${state.gu} 전체 평균`;
+}
+
+function buildCmpSeries(sel, ghostNames) {
+  const all = {};        // 구간 -> 전체 평당가 목록(기준선용)
+  const byGroup = {};    // 지역 -> 구간 -> 평당가 목록
+  for (const d of state.deals) {
+    if (d.type !== state.cmpType) continue;
+    const k = bucketKey(d.date);
+    (all[k] ??= []).push(perPyeong(d));
+    const g = cmpGroupKey(d);
+    ((byGroup[g] ??= {})[k] ??= []).push(perPyeong(d));
+  }
+  // x축은 선택과 무관하게 "전체 데이터가 있는 구간" 기준 — 칩을 눌러도 축이 흔들리지 않는다.
+  const keys = Object.keys(all).sort();
+  const pick = (m) => keys.map((k) => ({ key: k, med: median(m[k] || []) })).filter((p) => p.med != null);
+
+  const out = {};
+  for (const g of sel) out[g] = pick(byGroup[g] || {});
+  if (state.cmpBase) out[CMP_BASE_KEY] = pick(all);
+
+  const ghost = {};
+  for (const g of (ghostNames || [])) {
+    const pts = pick(byGroup[g] || {});
+    if (pts.length > 1) ghost[g] = pts;
+  }
+  return { keys, series: out, ghost };
+}
+
+function renderCmpIndex(gran, modeTxt) {
+  const guMode = state.indexView === 'gu';
+  const typeLabel = SERIES.find((s) => s.key === state.cmpType).label;
+  $$('#cmpType .seg-btn').forEach((b) => b.classList.toggle('is-on', b.getAttribute('data-t') === state.cmpType));
+
+  // 구별 비교는 25개 구 데이터가 모두 있어야 의미가 있다(한 구만 조회하면 비교 대상이 하나뿐).
+  if (guMode && state.gu !== 'all') {
+    $('#indexSub').textContent = `${gran} 자치구별 ${typeLabel} ${modeTxt} 비교`;
+    $('#cmpPresets').innerHTML = '';
+    $('#cmpToggles').innerHTML = '';
+    $('#cmpChips').innerHTML = `<div class="cmp-guide">
+      구별 추세를 비교하려면 자치구를 <b>전체 서울(25개 구 합산)</b>로 조회해야 합니다.
+      <button type="button" class="cmp-loadall" id="cmpLoadAll">전체 서울로 조회하기</button>
+    </div>`;
+    $('#cmpHint').textContent = '지금은 ' + state.gu + ' 데이터만 불러온 상태입니다. (동별 비교는 바로 사용할 수 있습니다)';
+    $('#indexLegend').innerHTML = '';
+    $('#indexChart').innerHTML = '<div class="empty">전체 서울로 조회하면 구별 추세를 겹쳐 비교할 수 있습니다.</div>';
+    $('#rebIndexPanel').hidden = true;
+    return;
+  }
+
+  const groups = cmpGroups();
+  const sel = ensureCmpSel(groups);
+  const unitTxt = guMode ? '자치구별' : '법정동별';
+  const scopeTxt = state.gu === 'all' ? '서울시 전체' : state.gu;
+  $('#indexSub').textContent = `${gran} ${unitTxt} ${typeLabel} ${modeTxt} 비교 · ${scopeTxt} · ${sel.length}곳 선택`;
+
+  // 빠른 선택(권역 프리셋 / 거래 상위)
+  const presets = guMode
+    ? GU_PRESETS.map((p) => ({ label: p.label, names: p.gus.filter((g) => groups.some((x) => x.name === g)) }))
+        .filter((p) => p.names.length >= 2)
+    : [
+        { label: '거래 상위 3곳', names: groups.slice(0, 3).map((g) => g.name) },
+        { label: '거래 상위 6곳', names: groups.slice(0, CMP_MAX).map((g) => g.name) },
+      ].filter((p) => p.names.length >= 2);
+  $('#cmpPresets').innerHTML = presets.map((p, i) =>
+    `<button type="button" class="cmp-preset" data-p="${i}">${esc(p.label)}</button>`).join('');
+  $('#cmpPresets').__presets = presets;
+
+  // 동이 아주 많은 경우(전체 서울 동별)에는 거래 상위 60곳까지만 칩으로 노출
+  const CAP = 60;
+  const shown = groups.slice(0, CAP);
+  const extraSel = sel.filter((g) => !shown.some((x) => x.name === g));
+  const chips = [...shown, ...extraSel.map((g) => ({ name: g, n: 0 }))];
+  const full = sel.length >= CMP_MAX;
+
+  $('#cmpChips').innerHTML = chips.map((g) => {
+    const i = sel.indexOf(g.name);
+    const on = i >= 0;
+    const style = on ? ` style="--c:${CMP_COLORS[i % CMP_COLORS.length]}"` : '';
+    return `<button type="button" class="cmp-chip ${on ? 'is-on' : ''} ${!on && full ? 'is-dim' : ''}"${style} data-g="${esc(g.name)}">
+      ${esc(g.name)}<span class="n">${g.n.toLocaleString()}</span>
     </button>`;
-  }).join('') + rebToggleHtml();
+  }).join('') || '<span class="cmp-guide">비교할 거래가 없습니다. 거래유형이나 기간을 바꿔보세요.</span>';
 
-  drawChart(keys, series);
-  renderRebIndexPanel();
+  $('#cmpHint').textContent = `선택 ${sel.length}/${CMP_MAX} · 칩을 클릭해 추가·해제합니다`
+    + (groups.length > CAP ? ` (거래 많은 ${CAP}곳만 표시 · 전체 ${groups.length.toLocaleString()}곳)` : '');
+
+  // 기준선(전체 평균)·나머지 참고선 켜고 끄기
+  const unitWord = guMode ? '구' : '동';
+  $('#cmpToggles').innerHTML = `
+    <button type="button" class="cmp-toggle ${state.cmpBase ? 'is-on' : ''}" data-k="base">
+      <span class="sw sw-dash"></span>${esc(cmpBaseLabel())} 기준선
+    </button>
+    <button type="button" class="cmp-toggle ${state.cmpGhost ? 'is-on' : ''}" data-k="ghost">
+      <span class="sw sw-ghost"></span>나머지 ${unitWord} 참고선
+    </button>`;
+
+  const ghostNames = state.cmpGhost
+    ? groups.slice(0, GHOST_CAP).map((g) => g.name).filter((g) => !sel.includes(g))
+    : [];
+
+  const defs = sel.map((g, i) => ({ key: g, label: g, color: CMP_COLORS[i % CMP_COLORS.length] }));
+  if (state.cmpBase) defs.push({ key: CMP_BASE_KEY, label: cmpBaseLabel(), color: CMP_BASE_COLOR, dash: true });
+
+  $('#indexLegend').innerHTML = (defs.length
+    ? defs.map((d) => `<span class="lg"><span class="sw ${d.dash ? 'sw-dash' : ''}" style="${d.dash ? '' : `background:${d.color}`}"></span>${esc(d.label)}</span>`).join('')
+    : '<span class="lg dim">아래에서 비교할 지역을 선택하세요</span>')
+    + (ghostNames.length ? `<span class="lg dim"><span class="sw sw-ghost"></span>나머지 ${unitWord} ${ghostNames.length}곳 (참고)</span>` : '');
+
+  const { keys, series, ghost } = buildCmpSeries(sel, ghostNames);
+  drawChart(keys, series, defs, ghost);
+  $('#rebIndexPanel').hidden = true;
 }
 
 function rebToggleHtml() {
@@ -225,13 +404,19 @@ function rebToggleHtml() {
   </button>`;
 }
 
-function drawChart(keys, series) {
+/* keys=x축 구간, series={시리즈키: [{key,med}]}, defs=[{key,label,color,dash?}] (그릴 시리즈 정의),
+   ghost={지역: [{key,med}]} (선택 안 된 나머지 지역의 옅은 참고선 — 툴팁에는 안 잡힌다)
+   유형별 모드(매매/전세/월세)와 구·동 비교 모드가 같은 렌더러를 공유한다. */
+function drawChart(keys, series, defs, ghost) {
   const host = $('#indexChart');
+  const cmp = state.indexView !== 'type';
   if (!keys.length) { host.innerHTML = '<div class="empty">표시할 구간이 없습니다.</div>'; return; }
 
-  const visibleSeries = SERIES.filter((s) => state.indexVisible[s.key]);
+  const visibleSeries = defs;
   if (!visibleSeries.length) {
-    host.innerHTML = '<div class="empty">표시할 항목이 없습니다. 위 범례에서 매매·전세·월세 중 하나 이상을 켜주세요.</div>';
+    host.innerHTML = `<div class="empty">${cmp
+      ? '비교할 지역을 하나 이상 선택해 주세요.'
+      : '표시할 항목이 없습니다. 위 범례에서 매매·전세·월세 중 하나 이상을 켜주세요.'}</div>`;
     return;
   }
 
@@ -251,6 +436,12 @@ function drawChart(keys, series) {
       vMin = Math.min(vMin, p.v); vMax = Math.max(vMax, p.v);
       (dataByKey[p.key] ??= {})[s.key] = p.v;
     }
+  }
+  // 회색 참고선도 y축 범위 계산에는 포함해야 선이 위아래로 잘리지 않는다.
+  const ghostConv = {};
+  for (const g of Object.keys(ghost || {})) {
+    ghostConv[g] = toValues(ghost[g]);
+    for (const p of ghostConv[g]) { vMin = Math.min(vMin, p.v); vMax = Math.max(vMax, p.v); }
   }
   if (!isFinite(vMin)) { host.innerHTML = '<div class="empty">표시할 값이 없습니다.</div>'; return; }
   if (state.indexMode === 'index') { vMin = Math.min(vMin, 100); vMax = Math.max(vMax, 100); }
@@ -290,28 +481,38 @@ function drawChart(keys, series) {
     }
   });
 
+  const dpath = (pts) => pts.map((p, i) => (i ? 'L' : 'M')
+    + x(xIndex[p.key]).toFixed(1) + ' ' + y(p.v).toFixed(1)).join(' ');
+
+  // 1) 나머지 지역 참고선을 맨 뒤에 옅게 깔고
+  let ghostPaths = '';
+  for (const g of Object.keys(ghostConv)) {
+    ghostPaths += `<path d="${dpath(ghostConv[g])}" fill="none" stroke="#c9cfda" stroke-width="1.1" stroke-linejoin="round" opacity="0.8"/>`;
+  }
+
+  // 2) 선택한 지역·기준선을 그 위에 그린다
   let paths = '', dots = '';
   for (const s of visibleSeries) {
     const pts = converted[s.key];
     if (!pts.length) continue;
     const coords = pts.map((p) => [x(xIndex[p.key]), y(p.v)]);
     if (coords.length > 1) {
-      const dstr = coords.map((c, i) => (i ? 'L' : 'M') + c[0].toFixed(1) + ' ' + c[1].toFixed(1)).join(' ');
-      paths += `<path d="${dstr}" fill="none" stroke="${s.color}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+      paths += `<path d="${dpath(pts)}" fill="none" stroke="${s.color}" stroke-width="${s.dash ? 2.2 : 2.4}"`
+        + `${s.dash ? ' stroke-dasharray="7 5"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`;
     }
     pts.forEach((p) => {
       const cx = x(xIndex[p.key]), cy = y(p.v);
-      dots += `<circle class="dot" cx="${cx}" cy="${cy}" r="${coords.length === 1 ? 5 : 3.6}" fill="${s.color}" stroke="var(--card)" stroke-width="1.5" data-x="${p.key}" data-s="${s.key}" data-v="${p.v.toFixed(2)}"/>`;
+      dots += `<circle class="dot" cx="${cx}" cy="${cy}" r="${coords.length === 1 ? 5 : (s.dash ? 2.8 : 3.6)}" fill="${s.color}" stroke="var(--card)" stroke-width="1.5" data-x="${p.key}" data-s="${s.key}" data-v="${p.v.toFixed(2)}"/>`;
     });
   }
 
   host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img">
     ${grid}${baseLine}${yl}${xl}
     <text class="axis-lbl" x="${M.l}" y="12" text-anchor="start">${state.indexMode === 'index' ? '지수' : '만원/평'}</text>
-    ${paths}${dots}
+    ${ghostPaths}${paths}${dots}
   </svg>`;
 
-  wireTooltip(host, dataByKey);
+  wireTooltip(host, dataByKey, defs);
 }
 
 function getTip(id) {
@@ -326,15 +527,15 @@ function placeTip(tip, e) {
   tip.style.left = left + 'px'; tip.style.top = top + 'px';
 }
 
-function wireTooltip(host, dataByKey) {
+function wireTooltip(host, dataByKey, defs) {
   const tip = getTip('chartTip');
   $$('.dot', host).forEach((dot) => {
     dot.addEventListener('mouseenter', (e) => {
       const xk = dot.getAttribute('data-x');
       const row = dataByKey[xk] || {};
       const unit = state.indexMode === 'index' ? '' : ' 만원';
-      const body = SERIES.filter((s) => row[s.key] != null).map((s) =>
-        `<div class="tt-row"><span style="color:${s.color}">${s.label}</span><b>${state.indexMode === 'index' ? row[s.key].toFixed(1) : comma(row[s.key])}${unit}</b></div>`).join('');
+      const body = defs.filter((s) => row[s.key] != null).map((s) =>
+        `<div class="tt-row"><span style="color:${s.color}">${esc(s.label)}</span><b>${state.indexMode === 'index' ? row[s.key].toFixed(1) : comma(row[s.key])}${unit}</b></div>`).join('');
       tip.innerHTML = `<div class="tt-title">${state.granularity === 'week' ? '주 시작 ' : ''}${xk}</div>${body}`;
       tip.style.opacity = '1';
       placeTip(tip, e);
@@ -934,7 +1135,7 @@ async function buildPrintReport() {
       locHtml = order.map((k) => `<div class="print-loc-block">${R[k]()}</div>`).join('');
     }
   }
-  $('#printLocAll').innerHTML = `${header}<h3 class="print-loc-title">4. 입지분석 전체</h3>${locHtml}`;
+  $('#printLocAll').innerHTML = `${header}<h3 class="print-loc-title">5. 입지분석 전체</h3>${locHtml}`;
 }
 
 // 지하철역·공원·상권처럼 "이름 클릭 → 상세 펼침" 패턴을 공유하는 공통 헬퍼.
@@ -1234,6 +1435,7 @@ function init() {
   guSel.addEventListener('change', () => {
     state.gu = guSel.value;
     state.dong = 'all';
+    state.cmpSel.dong = [];   // 구가 바뀌면 동 비교 선택은 의미가 없어 초기화(구 선택은 그대로 유지)
     // locKey는 일부러 유지한다 — 입지분석 탭이 열려 있으면 구를 바꿔도 닫지 않고
     // renderAll()이 새 구 데이터로 그 탭을 다시 그려준다(전엔 여기서 null로 초기화해
     // 탭이 열린 채로 방치돼 "구를 바꿔도 안 바뀐다"처럼 보이는 버그가 있었다).
@@ -1243,6 +1445,52 @@ function init() {
   segBind('#granularity', 'data-g', (v) => { state.granularity = v; if (!$('#dash').hidden) { renderIndex(); renderVolume(); } });
   segBind('#dongFilter', 'data-d', (v) => { state.dong = v; if (!$('#dash').hidden) renderAll(); });
   segBind('#indexMode', 'data-m', (v) => { state.indexMode = v; renderIndex(); });
+  segBind('#indexView', 'data-v', (v) => { state.indexView = v; renderIndex(); });
+  segBind('#cmpType', 'data-t', (v) => { state.cmpType = v; renderIndex(); });
+
+  // 비교 지역 칩: 클릭으로 최대 6개까지 추가·해제
+  $('#cmpChips').addEventListener('click', (e) => {
+    if (e.target.closest('#cmpLoadAll')) {
+      $('#guSelect').value = 'all';
+      state.gu = 'all';
+      state.dong = 'all';
+      state.cmpSel.dong = [];
+      loadData();
+      return;
+    }
+    const chip = e.target.closest('.cmp-chip'); if (!chip) return;
+    const name = chip.getAttribute('data-g');
+    const sel = cmpSel();
+    const i = sel.indexOf(name);
+    if (i >= 0) sel.splice(i, 1);
+    else if (sel.length < CMP_MAX) sel.push(name);
+    else { $('#cmpHint').textContent = `최대 ${CMP_MAX}곳까지 비교할 수 있습니다. 먼저 선택된 지역을 해제하세요.`; return; }
+    renderIndex();
+  });
+
+  $('#cmpToggles').addEventListener('click', (e) => {
+    const b = e.target.closest('.cmp-toggle'); if (!b) return;
+    const k = b.getAttribute('data-k');
+    if (k === 'base') state.cmpBase = !state.cmpBase;
+    else state.cmpGhost = !state.cmpGhost;
+    renderIndex();
+  });
+
+  $('#cmpPresets').addEventListener('click', (e) => {
+    const b = e.target.closest('.cmp-preset'); if (!b) return;
+    const p = ($('#cmpPresets').__presets || [])[Number(b.getAttribute('data-p'))];
+    if (!p) return;
+    state.cmpSel[state.indexView] = p.names.slice(0, CMP_MAX);
+    renderIndex();
+  });
+
+  // TOP 10 3종 전환 탭(인쇄 시에는 CSS에서 숨김이 풀려 3개 모두 출력된다)
+  $('#topTabs').addEventListener('click', (e) => {
+    const b = e.target.closest('.top-tab'); if (!b) return;
+    state.topTab = b.getAttribute('data-tab');
+    syncTopTabs();
+  });
+  syncTopTabs();
 
   $('#geoResetBtn').addEventListener('click', () => {
     $('#dongFilter .seg-btn[data-d="all"]')?.click();
@@ -1326,6 +1574,10 @@ function init() {
 }
 function syncLocTiles() {
   $$('#locGrid .loc-tile').forEach((t) => t.classList.toggle('is-on', t.getAttribute('data-k') === state.locKey));
+}
+function syncTopTabs() {
+  $$('#topTabs .top-tab').forEach((b) => b.classList.toggle('is-on', b.getAttribute('data-tab') === state.topTab));
+  $$('[data-tabpanel]').forEach((c) => c.classList.toggle('is-tab-off', c.getAttribute('data-tabpanel') !== state.topTab));
 }
 
 document.addEventListener('DOMContentLoaded', init);

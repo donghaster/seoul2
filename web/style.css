@@ -101,6 +101,7 @@ b { font-weight: 700; color: var(--txt); }
 .print-btn:hover { border-color: var(--accent); color: var(--accent); }
 .print-btn:disabled { opacity: 0.6; cursor: default; }
 .print-only { display: none; }
+.print-watermark { display: none; }   /* 화면에서는 숨김 — @media print에서만 켜진다 */
 .fetched .live-dot {
   display: inline-block; width: 7px; height: 7px; border-radius: 50%;
   background: var(--accent); margin-right: 6px; box-shadow: 0 0 0 3px var(--accent-light);
@@ -147,6 +148,76 @@ input[type="date"]:focus { outline: none; border-color: var(--accent); box-shado
   min-width: 170px;
 }
 #guSelect:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+
+/* ── 구별/동별 비교 선택 패널(가격지수 카드) ── */
+.cmp-panel {
+  background: var(--accent-pale);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.cmp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.cmp-label { font-size: 12px; font-weight: 700; color: var(--txt-mute); }
+.cmp-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.cmp-preset {
+  background: var(--card); border: 1px solid var(--line); color: var(--txt-dim);
+  padding: 6px 12px; border-radius: 100px; font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: var(--sans); transition: 0.15s;
+}
+.cmp-preset:hover { border-color: var(--accent); color: var(--accent-2); }
+
+.cmp-row-toggles { margin-bottom: 10px; }
+.cmp-toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+.cmp-toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--card); border: 1px solid var(--line); color: var(--txt-mute);
+  padding: 6px 13px; border-radius: 100px; font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: var(--sans); transition: 0.15s; opacity: 0.6;
+}
+.cmp-toggle .sw { display: inline-block; width: 20px; height: 4px; border-radius: 3px; flex-shrink: 0; }
+.cmp-toggle:hover { border-color: var(--accent); }
+.cmp-toggle.is-on { color: var(--txt-dim); opacity: 1; background: var(--accent-pale); border-color: #c7d1e6; }
+/* 범례·토글의 점선(기준선) / 옅은 회색(참고선) 색 견본 */
+.sw-dash { background: repeating-linear-gradient(90deg, #2b3245 0 6px, transparent 6px 10px) !important; }
+.sw-ghost { background: #c9cfda !important; }
+
+.cmp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cmp-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--card); border: 1px solid var(--line); color: var(--txt-dim);
+  padding: 6px 12px; border-radius: 100px; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; font-family: var(--sans); transition: 0.15s;
+}
+.cmp-chip .n { font-size: 10.5px; color: var(--txt-mute); font-family: var(--mono); }
+.cmp-chip:hover { border-color: var(--accent); color: var(--txt); }
+.cmp-chip.is-on { background: var(--c); border-color: var(--c); color: #fff; font-weight: 700; }
+.cmp-chip.is-on .n { color: rgba(255, 255, 255, 0.8); }
+.cmp-chip.is-dim { opacity: 0.5; }
+.cmp-hint { margin: 9px 0 0; font-size: 11.5px; color: var(--txt-mute); }
+.cmp-guide { font-size: 13px; color: var(--txt-dim); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cmp-loadall {
+  background: var(--accent); border: 0; color: #fff; font-weight: 700;
+  padding: 7px 14px; border-radius: 8px; font-size: 12.5px; cursor: pointer; font-family: var(--sans);
+}
+.cmp-loadall:hover { filter: brightness(1.06); }
+
+/* ── TOP 10 3종 전환 탭 ── */
+.top-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.top-tab {
+  flex: 1 1 220px;
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 16px; cursor: pointer; font-family: var(--sans); transition: 0.15s;
+  box-shadow: var(--shadow-sm);
+}
+.top-tab b { font-size: 14px; font-weight: 800; color: var(--txt); }
+.top-tab em { font-style: normal; font-size: 11.5px; color: var(--txt-mute); }
+.top-tab:hover { border-color: var(--accent); }
+.top-tab.is-on { background: var(--accent); border-color: var(--accent); box-shadow: 0 8px 18px -10px rgba(79, 127, 230, 0.7); }
+.top-tab.is-on b { color: #fff; }
+.top-tab.is-on em { color: rgba(255, 255, 255, 0.82); }
+.is-tab-off { display: none; }
 
 .reb-btn { border-style: dashed; }
 .reb-index-panel { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line); }
@@ -500,7 +571,10 @@ tbody tr[data-i].is-selected { background: var(--accent-light); box-shadow: inse
   .presets, #loadBtn, #refreshBtn, .geo-map-tools, #geoResetBtn,
   .loc-grid, #locSummary, #locDetail, .fetched .live-dot,
   .card .note, .card-tools, #cardLocOnScreen,
+  #topTabs, .cmp-panel,
   #rebIndexPanel, .reb-index-panel { display: none !important; }   /* 공식지수 비교 패널은 토글 상태와 무관하게 인쇄에선 생략(1페이지 예산 확보) */
+  /* 화면에선 버튼으로 한 번에 하나만 보여주는 TOP10 카드 3종을, 인쇄본에서는 전부 되살린다 */
+  .is-tab-off { display: block !important; }
   main { padding: 0; }
 
   /* 헤더: 금집부쌤 로고·제목은 왼쪽에 크게, 반포114 상호/전화·금똑이는 우측 상단에 한 줄로 모아 배치.
@@ -576,6 +650,22 @@ tbody tr[data-i].is-selected { background: var(--accent-light); box-shadow: inse
 
   svg { max-width: 100%; }
   a[href] { color: inherit; text-decoration: none; }
+
+  /* 반포114 워터마크 — 모든 페이지 한가운데에 옅게. fixed라 페이지마다 반복되고,
+     pointer-events/opacity로 본문 가독성은 유지한다(색 재현은 print-color-adjust로 강제). */
+  .print-watermark {
+    display: flex !important;
+    position: fixed; inset: 0; z-index: 999;
+    align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .print-watermark img {
+    width: 72%; max-width: 560px; height: auto;
+    opacity: 0.1;
+    transform: rotate(-24deg);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 
   .print-only { display: block !important; }
   /* 3그룹: 입지분석 전체 요약은 항상 새 페이지에서 시작(1페이지 맨 위 지역 배너는 제외), 2쪽에 걸쳐도 되니 읽기 좋게 키움 */

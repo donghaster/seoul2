@@ -4,10 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>금집부쌤의 서울시 아파트 실거래 대시보드</title>
-  <link rel="stylesheet" href="style.css?v=29" />
+  <link rel="stylesheet" href="style.css?v=32" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🏙️</text></svg>" />
 </head>
 <body>
+
+<!-- 인쇄 전용 워터마크(반포114 상호·연락처).
+     position:fixed 요소는 크롬 인쇄에서 페이지마다 다시 그려지므로 전 페이지에 자동으로 찍힌다. -->
+<div class="print-watermark" aria-hidden="true">
+  <img src="assets/banpo114-logo.png" alt="" onerror="this.closest('.print-watermark').remove()" />
+</div>
 
 <header class="topbar">
   <div class="brand">
@@ -101,11 +107,36 @@
         <p class="card-sub" id="indexSub"></p>
       </div>
       <div class="card-tools">
+        <div class="seg small" id="indexView">
+          <button class="seg-btn is-on" data-v="type">유형별(매매·전세·월세)</button>
+          <button class="seg-btn" data-v="gu">구별 비교</button>
+          <button class="seg-btn" data-v="dong">동별 비교</button>
+        </div>
         <div class="seg small" id="indexMode">
           <button class="seg-btn is-on" data-m="index">지수 (기준=100)</button>
           <button class="seg-btn" data-m="price">평당가 (만원)</button>
         </div>
       </div>
+    </div>
+
+    <!-- 구·동 비교 모드에서만 열리는 선택 패널(칩을 클릭해 최대 6개 지역을 겹쳐 본다) -->
+    <div class="cmp-panel" id="cmpPanel" hidden>
+      <div class="cmp-row">
+        <span class="cmp-label">거래유형</span>
+        <div class="seg small" id="cmpType">
+          <button class="seg-btn is-on" data-t="sale">매매</button>
+          <button class="seg-btn" data-t="jeonse">전세</button>
+          <button class="seg-btn" data-t="monthly">월세(환산)</button>
+        </div>
+        <span class="cmp-label">빠른 선택</span>
+        <div class="cmp-presets" id="cmpPresets"></div>
+      </div>
+      <div class="cmp-row cmp-row-toggles">
+        <span class="cmp-label">비교 기준</span>
+        <div class="cmp-toggles" id="cmpToggles"></div>
+      </div>
+      <div class="cmp-chips" id="cmpChips"></div>
+      <p class="cmp-hint" id="cmpHint"></p>
     </div>
 
     <div class="legend" id="indexLegend"></div>
@@ -120,6 +151,12 @@
       <br />
       ※ 위 그래프는 동 단위까지 반영되는 <b>자체 산출 지수</b>입니다. "공식(부동산원) 지수 비교" 버튼을 누르면
       한국부동산원의 <b>공동주택 매매 실거래가격지수</b>(구 단위, 분기별, KOSIS 경유 공식 통계)를 함께 볼 수 있습니다.
+      <br />
+      ※ <b>구별 비교 / 동별 비교</b>를 누르면 서로 관련 있는 지역을 <b>최대 6곳까지 겹쳐서</b> 추세를 비교할 수 있습니다.
+      비교 모드에서는 <b>각 지역의 첫 거래 구간이 각각 100</b>이 되므로, 선(기울기)이 위로 갈수록 상승폭이 큰 지역입니다.
+      검은 <b>점선은 기준선</b>으로, 구별 비교에서는 <b>서울시 전체 평균</b>, 특정 구의 동별 비교에서는 <b>그 구 전체 평균</b>입니다 —
+      점선보다 위에 있으면 평균보다 많이 오른 지역입니다. 선택하지 않은 나머지 지역은 <b>옅은 회색</b>으로 함께 깔려
+      전체 흐름 속에서 내가 고른 지역의 위치를 볼 수 있습니다("나머지 구·동 참고선" 버튼으로 끌 수 있습니다).
     </p>
   </section>
 
@@ -164,8 +201,17 @@
     </p>
   </section>
 
+  <!-- ─────────────── TOP 10 3종 전환 탭 ───────────────
+       화면에서는 한 번에 하나만 보여주고(길게 이어지는 표 3개를 없앰),
+       "전체 인쇄" 시에는 CSS(@media print)에서 숨김을 풀어 3개 모두 출력한다. -->
+  <nav class="top-tabs" id="topTabs" aria-label="TOP 10 보기 전환">
+    <button type="button" class="top-tab is-on" data-tab="deal"><b>💰 아파트 실거래가 TOP 10</b><em>금액 상위 10건</em></button>
+    <button type="button" class="top-tab" data-tab="pyeong"><b>📐 아파트 평당가격 TOP 10</b><em>평당가 상위 10건</em></button>
+    <button type="button" class="top-tab" data-tab="rate"><b>📈 평당가 상승률 TOP 10</b><em>전반부→후반부 변동률</em></button>
+  </nav>
+
   <!-- ─────────────── 2. 실거래가 TOP 10 ─────────────── -->
-  <section class="card" id="cardTopDeal">
+  <section class="card" id="cardTopDeal" data-tabpanel="deal">
     <div class="card-head">
       <div>
         <h2>2. 아파트 실거래가 TOP 10</h2>
@@ -181,7 +227,7 @@
   </section>
 
   <!-- ─────────────── 3. 평당가격 TOP 10 ─────────────── -->
-  <section class="card" id="cardTopPyeong">
+  <section class="card" id="cardTopPyeong" data-tabpanel="pyeong">
     <div class="card-head">
       <div>
         <h2>3. 아파트 평당가격 TOP 10</h2>
@@ -197,10 +243,10 @@
   </section>
 
   <!-- ─────────────── 평당가 상승률 TOP 10 ─────────────── -->
-  <section class="card" id="cardRateTop">
+  <section class="card" id="cardRateTop" data-tabpanel="rate">
     <div class="card-head">
       <div>
-        <h2>📈 평당가 상승률 TOP 10</h2>
+        <h2>4. 평당가 상승률 TOP 10</h2>
         <p class="card-sub">선택 기간을 절반으로 나눠 <b>전반부→후반부 중위 평당가 변동률</b>이 큰 단지 순</p>
       </div>
       <div class="seg small" id="rateTab">
@@ -221,7 +267,7 @@
   <section class="card" id="cardLocOnScreen">
     <div class="card-head">
       <div>
-        <h2>4. 입지분석</h2>
+        <h2>5. 입지분석</h2>
         <p class="card-sub">항목을 클릭하면 상세 분석이 열립니다 (선택한 자치구 기준)</p>
       </div>
     </div>
@@ -263,6 +309,6 @@
 <script src="geo-coords.js?v=11"></script>
 <script src="static-data.js"></script>
   <script src="static-shim.js"></script>
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
