@@ -94,7 +94,11 @@ def main():
     with open(idx_path, "r", encoding="utf-8") as fh:
         html = fh.read()
     if "static-data.js" not in html:
-        inject = '<script src="static-data.js"></script>\n  <script src="static-shim.js"></script>\n  '
+        # 스냅샷 파일명은 그대로라 주소에 빌드 시각을 붙여둔다.
+        # 안 붙이면 갱신 후에도 브라우저가 캐시된 옛 데이터를 계속 써서 "갱신이 안 된다"처럼 보인다.
+        stamp = built_at.replace("-", "").replace(":", "").replace(" ", "")
+        inject = (f'<script src="static-data.js?v={stamp}"></script>\n'
+                  '  <script src="static-shim.js"></script>\n  ')
         html = html.replace('<script src="app.js', inject + '<script src="app.js', 1)
     with open(idx_path, "w", encoding="utf-8") as fh:
         fh.write(html)
