@@ -45,6 +45,13 @@ def build_gu_snapshot(gu: str, start: date, end: date) -> dict:
 
 
 def main():
+    # 윈도우 기본 콘솔은 cp949라 진행 메시지의 —·… 같은 문자에서 UnicodeEncodeError로
+    # 죽는다(데이터는 이미 다 만든 뒤라 더 억울하다). 출력 인코딩만 UTF-8로 바꿔 막는다.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     if len(sys.argv) >= 3:
         start = date.fromisoformat(sys.argv[1])
         end = date.fromisoformat(sys.argv[2])
