@@ -63,7 +63,12 @@ function bucketLabel(key) {
   const d = new Date(key + 'T00:00:00');
   return `${String(d.getMonth() + 1)}/${String(d.getDate()).padStart(2, '0')}`;
 }
-function refDate() { return new Date(); }
+// "최근 N개월"의 기준일. 정적 스냅샷 모드에서는 static-shim.js가 스냅샷 종료일(≈오늘)을
+// window.__REF_DATE__로 심어 두므로, 빠른 기간 버튼이 자료가 있는 마지막 날에 맞춰진다.
+function refDate() {
+  const ref = window.__REF_DATE__;
+  return ref ? new Date(ref + 'T00:00:00') : new Date();
+}
 
 /* ─────────────── 거래 → 파생 값 ─────────────── */
 function repAmount(d) {

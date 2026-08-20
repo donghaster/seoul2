@@ -170,12 +170,24 @@ def _cache_get(name: str, ttl: float | None) -> dict | list | None:
 
 
 def _cache_put(name: str, data) -> None:
+    """캐시 저장. 공원·상권·학교처럼 여러 구가 공유하는 파일은 스레드가 동시에 쓰는데,
+    윈도우에서는 같은 .tmp 이름을 여러 스레드가 잡으면 os.replace가 실패한다
+    (WinError 32 / Permission denied). 임시 파일 이름을 스레드마다 다르게 주고
+    바꿔치기 구간만 같은 이름끼리 잠근다."""
     os.makedirs(CACHE_DIR, exist_ok=True)
     path = os.path.join(CACHE_DIR, name)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False)
-    os.replace(tmp, path)
+    tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False)
+        with _lock_for(f"cache:{name}"):
+            os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------- 카카오 지오코딩

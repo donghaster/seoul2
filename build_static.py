@@ -32,8 +32,57 @@ DOCS = os.path.join(BASE, "docs")
 
 
 def default_range() -> tuple[date, date]:
+    """오늘을 종료일로 하는 롤링 구간. MONTHS 환경변수로 길이를 바꾼다(기본 6개월)."""
+    months = int(os.environ.get("MONTHS", "6"))
     today = date.today()
-    return today - timedelta(days=90), today
+    return today - timedelta(days=round(months * 30.44)), today
+
+
+# ---------------------------------------------------------------- 거래 압축
+# 원본 JSON은 한 건에 약 217바이트(긴 키 이름과 동·단지명이 매번 반복)라
+# 6개월치면 24MB가 넘는다. 사전(dictionary) + 배열로 접어 약 1/4로 줄인다.
+# 되돌리는 쪽은 web/static-shim.js의 decodeDeals().
+
+def encode_deals(result: dict, start: date) -> dict:
+    types: list[str] = []
+    dongs: list[str] = []
+    apts: list[str] = []
+    idx_t: dict[str, int] = {}
+    idx_d: dict[str, int] = {}
+    idx_a: dict[str, int] = {}
+
+    def put(table: list[str], index: dict[str, int], value: str) -> int:
+        v = value or ""
+        if v not in index:
+            index[v] = len(table)
+            table.append(v)
+        return index[v]
+
+    rows = []
+    for d in result["deals"]:
+        day = (date.fromisoformat(d["date"]) - start).days
+        rows.append([
+            put(types, idx_t, d["type"]),
+            put(dongs, idx_d, d.get("dong", "")),
+            put(apts, idx_a, d.get("apt", "")),
+            day,
+            d["area"],
+            d["floor"],
+            d["buildYear"],
+            d["amount"],
+            d["deposit"],
+            d["rent"],
+            d.get("jibun", ""),
+        ])
+
+    return {
+        "start": result["start"], "end": result["end"], "gus": result["gus"],
+        "months": result["months"], "count": result["count"],
+        "errors": result["errors"], "fetchedAt": result["fetchedAt"],
+        # 압축 본체 — enc=1이면 shim이 풀어서 app.js에 넘긴다
+        "enc": 1, "base": start.isoformat(),
+        "t": types, "d": dongs, "a": apts, "r": rows,
+    }
 
 
 def build_gu_snapshot(gu: str, start: date, end: date) -> dict:
@@ -41,7 +90,7 @@ def build_gu_snapshot(gu: str, start: date, end: date) -> dict:
     locinfo = server.build_locinfo(gu)
     price_index = server.fetch_price_index(gu)
     print(f"      [{gu}] 실거래 {deals_result['count']:,}건 · 입지분석 {'OK' if locinfo else '실패'} · 공식지수 {'OK' if price_index else '없음'}")
-    return {"deals": deals_result, "locinfo": locinfo, "priceIndex": price_index}
+    return {"deals": encode_deals(deals_result, start), "locinfo": locinfo, "priceIndex": price_index}
 
 
 def main():
@@ -63,6 +112,19 @@ def main():
         sys.exit(f"[오류] API 키가 설정되지 않았습니다: {', '.join(missing)} (.env 파일을 확인하세요)")
 
     gus = list(server.SEOUL_GU)
+
+    # 공원·상권·학교는 서울 전체가 공유하는 자료라 구마다 다시 받을 필요가 없다.
+    # 병렬 수집에 들어가기 전에 한 번만 받아 캐시에 채워 둔다
+    # (안 그러면 25개 스레드가 같은 파일을 동시에 쓰다 충돌한다).
+    print("[0/3] 서울 공통 자료(공원·상권·학교) 준비")
+    for label, fn in (("공원", server.fetch_parks_all),
+                      ("상권", server.fetch_trade_areas_all),
+                      ("학교", server.fetch_schools_all)):
+        try:
+            print(f"      {label} {len(fn()):,}건")
+        except Exception as exc:
+            print(f"      ! {label} 실패: {exc}")
+
     print(f"[1/3] {len(gus)}개 구 스냅샷 수집: {start} ~ {end}")
 
     snapshot: dict[str, dict | None] = {}

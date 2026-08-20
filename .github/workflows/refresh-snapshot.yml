@@ -1,0 +1,82 @@
+name: 실거래 스냅샷 갱신
+
+# 정적 스냅샷은 구울 때의 기간이 그대로 굳으므로, 매일 다시 구워
+# 조회 종료일이 항상 "오늘"이 되게 한다.
+on:
+  schedule:
+    - cron: "0 20 * * *"     # UTC 20:00 = 한국시간 매일 05:00
+  workflow_dispatch:
+    inputs:
+      months:
+        description: "수록 기간(개월)"
+        required: false
+        default: "6"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-snapshot
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 월 단위 캐시를 남겨 두면 다음 날에는 새로 늘어난 달만 받으면 된다.
+      - name: 캐시 복원
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: molit-cache-${{ github.run_id }}
+          restore-keys: molit-cache-
+
+      - name: 스냅샷 다시 굽기
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
+          SEOUL_OPEN_DATA_KEY: ${{ secrets.SEOUL_OPEN_DATA_KEY }}
+          KOSIS_KEY: ${{ secrets.KOSIS_KEY }}
+          NEIS_KEY: ${{ secrets.NEIS_KEY }}
+          MONTHS: ${{ github.event.inputs.months || '6' }}
+        run: py -3 build_static.py || python build_static.py
+
+      - name: 결과 확인
+        run: |
+          python - <<'PY'
+          import json, os, sys
+          p = "docs/static-data.js"
+          size = os.path.getsize(p) / 1024 / 1024
+          d = json.loads(open(p, encoding="utf-8").read().split("=", 1)[1].strip().rstrip(";"))
+          ok = [g for g, v in d["gus"].items() if v]
+          bad = [g for g, v in d["gus"].items() if not v]
+          total = sum(v["deals"]["count"] for v in d["gus"].values() if v)
+          print(f"기간 {d['start']} ~ {d['end']} · {size:.2f} MB · 거래 {total:,}건")
+          print(f"수집 성공 {len(ok)}/25개 구")
+          if bad:
+              print("실패:", ", ".join(bad))
+          # 절반 넘게 실패하면 망가진 스냅샷을 커밋하지 않는다
+          if len(ok) < 20 or total < 10000:
+              sys.exit("스냅샷이 온전하지 않아 커밋하지 않습니다.")
+          PY
+
+      - name: 변경분 커밋
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if git diff --cached --quiet; then
+            echo "변경 없음 — 커밋 생략"
+          else
+            RANGE=$(python -c "import json;d=json.loads(open('docs/static-data.js',encoding='utf-8').read().split('=',1)[1].strip().rstrip(';'));print(d['start'],'~',d['end'])")
+            git commit -m "정적 스냅샷 갱신 ($RANGE)"
+            git push
+          fi
