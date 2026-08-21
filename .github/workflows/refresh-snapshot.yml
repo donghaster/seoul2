@@ -37,11 +37,13 @@ jobs:
           python-version: "3.12"
 
       # 월 단위 캐시를 남겨 두면 다음 날에는 새로 늘어난 달만 받으면 된다.
+      # actions/cache는 저장이 job 끝(post 단계)이라 중간에 취소·타임아웃이 나면
+      # 받아둔 걸 통째로 잃는다. 복원과 저장을 나눠 굽기 직후 바로 저장한다.
       - name: 캐시 복원
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .cache
-          key: molit-cache-${{ github.run_id }}
+          key: molit-cache-
           restore-keys: molit-cache-
 
       - name: 스냅샷 다시 굽기
@@ -53,6 +55,14 @@ jobs:
           NEIS_KEY: ${{ secrets.NEIS_KEY }}
           MONTHS: ${{ github.event.inputs.months || '6' }}
         run: py -3 build_static.py || python build_static.py
+
+      # 뒤 단계가 실패하더라도 받아둔 원본은 남겨 다음 실행이 이어받게 한다
+      - name: 캐시 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .cache
+          key: molit-cache-${{ github.run_id }}
 
       - name: 결과 확인
         run: |
