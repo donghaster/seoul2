@@ -110,6 +110,10 @@ API_RENT = "1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent"      # 아파트 �
 CACHE_TTL_CURRENT_MONTH = 60 * 30       # 30분
 LOCINFO_TTL = 60 * 60 * 24 * 7          # 입지분석(공원·상권·인구)은 자주 안 바뀌므로 7일
 PRICE_INDEX_TTL = 60 * 60 * 24 * 7      # 공식 가격지수는 분기 단위 통계라 7일이면 충분
+KOSIS_TIMEOUT = float(os.environ.get("KOSIS_TIMEOUT", "45"))
+# KOSIS가 닿지 않는 환경(예: GitHub Actions)을 대비해 저장소에 함께 두는 기준값.
+# tools/dump_price_index.py로 다시 만든다.
+PRICE_INDEX_SEED = os.path.join(BASE_DIR, "data", "price-index.json")
 PAGE_SIZE = 1000
 
 _SSL_CTX = ssl.create_default_context()
@@ -642,7 +646,8 @@ def _seoul_open_data_get(service: str, start_idx: int, end_idx: int, extra: str 
     path = f"/{SEOUL_OPEN_DATA_KEY}/json/{service}/{start_idx}/{end_idx}/{extra}"
     url = f"http://openapi.seoul.go.kr:8088{path}"
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=15, context=_SSL_CTX) as resp:
+    # GitHub Actions(해외 러너)에서는 KOSIS 응답이 느리거나 막혀 15초로는 부족했다.
+    with urllib.request.urlopen(req, timeout=KOSIS_TIMEOUT, context=_SSL_CTX) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     body = data.get(service) or {}
     result = body.get("RESULT") or {}
@@ -863,9 +868,28 @@ def fetch_price_index(gu: str) -> dict | None:
         # 기한이 지났더라도 지난 값이 있으면 그걸 쓴다 — 분기 통계라 하루이틀 묵어도 쓸 만하다.
         stale = _cache_get(cache_name, None)
         if stale:
-            print(f"        (직전 캐시 사용)")
+            print("        (직전 캐시 사용)")
             return stale
+        seed = _price_index_seed(gu)
+        if seed:
+            print("        (저장소 기준값 사용)")
+            return seed
         return None
+
+
+_seed_cache: dict | None = None
+
+
+def _price_index_seed(gu: str) -> dict | None:
+    """저장소에 커밋해 둔 기준값. KOSIS가 아예 닿지 않아도 화면이 비지 않게 한다."""
+    global _seed_cache
+    if _seed_cache is None:
+        try:
+            with open(PRICE_INDEX_SEED, encoding="utf-8") as fh:
+                _seed_cache = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            _seed_cache = {}
+    return _seed_cache.get(gu)
 
 
 def _build_park_sample(gu: str, parks: list[dict]) -> list[dict]:
