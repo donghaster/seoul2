@@ -1413,9 +1413,13 @@ function segBind(containerSel, attr, apply) {
 function setPreset(code) {
   const end = refDate();
   let start = refDate();
-  const map = { '4w': () => start.setDate(end.getDate() - 28), '3m': () => start.setMonth(end.getMonth() - 3),
-    '6m': () => start.setMonth(end.getMonth() - 6), '1y': () => start.setFullYear(end.getFullYear() - 1),
-    '2y': () => start.setFullYear(end.getFullYear() - 2) };
+  // "최근 N개월"은 통합 부동산 대시보드와 똑같이 '달' 단위로 센다.
+  // 예: 오늘이 2026-08-21이고 3개월이면 2026-06-01 ~ 2026-08-21 (6·7·8월).
+  // 예전처럼 날짜에서 3개월을 빼면 5/21부터라 열흘이 더 들어가 두 대시보드 숫자가 어긋났다.
+  const backMonths = (n) => { start = new Date(end.getFullYear(), end.getMonth() - (n - 1), 1); };
+  const map = { '4w': () => start.setDate(end.getDate() - 28), '3m': () => backMonths(3),
+    '6m': () => backMonths(6), '1y': () => backMonths(12),
+    '2y': () => backMonths(24) };
   (map[code] || map['3m'])();
   $('#startDate').value = toISO(start);
   $('#endDate').value = toISO(end);

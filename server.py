@@ -108,6 +108,9 @@ API_RENT = "1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent"      # 아파트 �
 
 # 진행 중인 달(현재월)은 신고가 계속 추가되므로 캐시를 짧게 유지한다.
 CACHE_TTL_CURRENT_MONTH = 60 * 30       # 30분
+# 실거래 신고 기한이 계약일로부터 30일이라, 지난달·지지난달 거래도 이번 달까지 계속 접수된다.
+# 최근 N개월은 캐시를 믿지 말고 다시 받는다(안 그러면 처음 받은 수치로 영영 굳는다).
+RECENT_REFRESH_MONTHS = int(os.environ.get("RECENT_MONTHS", "3"))
 LOCINFO_TTL = 60 * 60 * 24 * 7          # 입지분석(공원·상권·인구)은 자주 안 바뀌므로 7일
 PRICE_INDEX_TTL = 60 * 60 * 24 * 7      # 공식 가격지수는 분기 단위 통계라 7일이면 충분
 KOSIS_TIMEOUT = float(os.environ.get("KOSIS_TIMEOUT", "45"))
@@ -567,6 +570,18 @@ def _is_current_or_future(ym: str) -> bool:
     return ym >= f"{today.year:04d}{today.month:02d}"
 
 
+def _is_recent(ym: str) -> bool:
+    """오늘이 속한 달부터 거꾸로 RECENT_REFRESH_MONTHS개월 안에 드는가.
+    이 구간은 뒤늦은 신고가 계속 들어오므로 캐시를 오래 믿으면 안 된다."""
+    t = date.today()
+    y, m = t.year, t.month
+    for _ in range(max(1, RECENT_REFRESH_MONTHS)):
+        if ym == f"{y:04d}{m:02d}":
+            return True
+        y, m = (y - 1, 12) if m == 1 else (y, m - 1)
+    return ym > f"{y:04d}{m:02d}"
+
+
 def load_month(gu: str, kind: str, ym: str, refresh: bool = False) -> list[dict]:
     """kind: 'sale'(매매) | 'rent'(전월세)."""
     lawd_cd = SEOUL_GU[gu]
@@ -574,7 +589,7 @@ def load_month(gu: str, kind: str, ym: str, refresh: bool = False) -> list[dict]
 
     if not refresh and os.path.exists(path):
         age = time.time() - os.path.getmtime(path)
-        if not _is_current_or_future(ym) or age < CACHE_TTL_CURRENT_MONTH:
+        if not _is_recent(ym) or age < CACHE_TTL_CURRENT_MONTH:
             try:
                 with open(path, "r", encoding="utf-8") as fh:
                     return json.load(fh)
@@ -584,7 +599,7 @@ def load_month(gu: str, kind: str, ym: str, refresh: bool = False) -> list[dict]
     with _lock_for(f"{gu}:{kind}:{ym}"):
         if not refresh and os.path.exists(path):
             age = time.time() - os.path.getmtime(path)
-            if not _is_current_or_future(ym) or age < CACHE_TTL_CURRENT_MONTH:
+            if not _is_recent(ym) or age < CACHE_TTL_CURRENT_MONTH:
                 try:
                     with open(path, "r", encoding="utf-8") as fh:
                         return json.load(fh)

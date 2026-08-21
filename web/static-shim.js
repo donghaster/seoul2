@@ -145,11 +145,12 @@
       }
     });
 
-    // 기본값: 스냅샷 종료일(≈오늘) 기준 최근 3개월
+    // 기본값: 스냅샷 종료일(≈오늘) 기준 최근 3개월 — 달 단위(6·7·8월)로 센다
     const end = DATA.end;
-    const s = new Date(end + 'T00:00:00');
-    s.setMonth(s.getMonth() - 3);
-    const startWanted = s.toISOString().slice(0, 10);
+    const e = new Date(end + 'T00:00:00');
+    const s = new Date(e.getFullYear(), e.getMonth() - 2, 1);
+    const pad = (n) => (n < 10 ? '0' + n : '' + n);
+    const startWanted = s.getFullYear() + '-' + pad(s.getMonth() + 1) + '-' + pad(s.getDate());
     if (startEl) startEl.value = startWanted < DATA.start ? DATA.start : startWanted;
     if (endEl) endEl.value = end;
     const btn3m = document.querySelector('#presets button[data-preset="3m"]');
