@@ -4,27 +4,41 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>금집부쌤의 서울시 아파트 실거래 대시보드</title>
-<meta http-equiv="refresh" content="0; url=http://localhost:8766" />
+<!-- 이 파일을 더블클릭하면 서버 없이 바로 대시보드로 넘어갑니다. -->
+<meta http-equiv="refresh" content="0; url=docs/index.html" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🏙️</text></svg>" />
 <style>
-  body { font-family: -apple-system, "Malgun Gothic", sans-serif; background: #f4f6fa; color: #232a38;
-         display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; }
-  .box { max-width: 480px; background: #fff; border: 1px solid #dde2ea; border-radius: 14px; padding: 28px 32px; }
-  h1 { font-size: 18px; margin: 0 0 12px; }
-  p { font-size: 14px; line-height: 1.6; color: #444; margin: 0 0 10px; }
-  ol { font-size: 14px; line-height: 1.7; color: #444; padding-left: 20px; margin: 12px 0; }
-  a { color: #4670ca; font-weight: 700; }
+  body { font-family: "Pretendard", "Malgun Gothic", -apple-system, sans-serif;
+         background: #f4f6fa; color: #232a38; margin: 0; padding: 24px;
+         display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .box { max-width: 540px; background: #fff; border: 1px solid #dde2ea; border-radius: 16px;
+         padding: 30px 34px; box-shadow: 0 2px 14px -6px rgba(35,45,66,.12); }
+  h1 { font-size: 19px; margin: 0 0 6px; letter-spacing: -.01em; }
+  .sub { font-size: 13px; color: #6c7381; margin: 0 0 18px; }
+  a.go { display: inline-block; background: #4670ca; color: #fff; text-decoration: none;
+         font-weight: 800; font-size: 14px; padding: 11px 20px; border-radius: 10px; }
+  a.go:hover { background: #35569e; }
+  .note { margin-top: 20px; padding-top: 16px; border-top: 1px solid #e7eaf1;
+          font-size: 12px; color: #6c7381; line-height: 1.8; }
+  .note b { color: #232a38; }
   code { background: #eef1f6; padding: 1px 6px; border-radius: 5px; }
 </style>
 </head>
 <body>
   <div class="box">
-    <h1>금집부쌤의 서울시 아파트 실거래 대시보드로 이동 중…</h1>
-    <p>자동으로 이동하지 않으면 <a href="http://localhost:8766">여기를 클릭</a>하세요.</p>
-    <p>만약 페이지를 열 수 없다는 오류가 뜬다면, 서버가 아직 실행되지 않은 것입니다:</p>
-    <ol>
-      <li><code>실행하기.bat</code>을 더블클릭해 서버를 먼저 켜세요.</li>
-      <li>잠시 후 브라우저가 자동으로 열립니다(또는 이 페이지를 새로고침하세요).</li>
-    </ol>
+    <h1>금집부쌤의 서울시 아파트 실거래 대시보드</h1>
+    <p class="sub">반포114공인중개사 · 010-9442-2027</p>
+
+    <a class="go" href="docs/index.html">대시보드 열기 →</a>
+
+    <p class="note">
+      자동으로 넘어가지 않으면 위 버튼을 눌러 주세요.<br />
+      수록 기간 안에서 시작일·종료일과 빠른 기간(최근 4주/3개월/6개월)을 고를 수 있고,
+      자료는 <b>매일 새벽 자동으로 갱신</b>됩니다.<br /><br />
+
+      <b>실시간 조회로 보고 싶다면</b> — <code>실행하기.bat</code>을 더블클릭하세요.
+      공공데이터포털에서 그때그때 받아오므로 기간 제한 없이 조회할 수 있습니다(API 키 필요).
+    </p>
   </div>
 </body>
 </html>
