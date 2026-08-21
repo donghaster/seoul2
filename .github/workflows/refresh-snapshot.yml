@@ -78,9 +78,30 @@ jobs:
           print(f"수집 성공 {len(ok)}/25개 구")
           if bad:
               print("실패:", ", ".join(bad))
+
+          # 부가 자료도 눈에 보이게 — 예전에 공식지수가 25개 구 모두 조용히 비어도
+          # 아무도 몰랐던 적이 있다.
+          def has(key, *path):
+              n = 0
+              for v in d["gus"].values():
+                  if not v:
+                      continue
+                  cur = v
+                  for k in path:
+                      cur = (cur or {}).get(k) if isinstance(cur, dict) else None
+                  if cur:
+                      n += 1
+              print(f"  {key}: {n}/25개 구")
+              return n
+          pidx = has("공식 가격지수", "priceIndex", "points")
+          has("입지분석(학교)", "locinfo", "schools", "count")
+          has("입지분석(인구)", "locinfo", "population", "total")
+
           # 절반 넘게 실패하면 망가진 스냅샷을 커밋하지 않는다
           if len(ok) < 20 or total < 10000:
               sys.exit("스냅샷이 온전하지 않아 커밋하지 않습니다.")
+          if pidx == 0:
+              sys.exit("공식 가격지수가 한 곳도 없습니다 — KOSIS 호출을 확인하세요.")
           PY
 
       - name: 변경분 커밋

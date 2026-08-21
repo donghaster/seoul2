@@ -109,6 +109,7 @@ API_RENT = "1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent"      # 아파트 �
 # 진행 중인 달(현재월)은 신고가 계속 추가되므로 캐시를 짧게 유지한다.
 CACHE_TTL_CURRENT_MONTH = 60 * 30       # 30분
 LOCINFO_TTL = 60 * 60 * 24 * 7          # 입지분석(공원·상권·인구)은 자주 안 바뀌므로 7일
+PRICE_INDEX_TTL = 60 * 60 * 24 * 7      # 공식 가격지수는 분기 단위 통계라 7일이면 충분
 PAGE_SIZE = 1000
 
 _SSL_CTX = ssl.create_default_context()
@@ -820,13 +821,25 @@ def fetch_household(gu: str) -> dict | None:
 
 
 def fetch_price_index(gu: str) -> dict | None:
-    """한국부동산원 공동주택 매매 실거래가격지수(시군구·분기별, 2017.4Q=100) — KOSIS 경유."""
+    """한국부동산원 공동주택 매매 실거래가격지수(시군구·분기별, 2017.4Q=100) — KOSIS 경유.
+
+    분기 단위 통계라 자주 바뀌지 않는데도 예전에는 캐시도 재시도도 없이 매번 새로 불러서,
+    KOSIS가 한 번 삐끗하면(특히 25개 구를 동시에 부르는 빌드에서) 그 구는 통째로 비어 버렸다.
+    실제로 GitHub Actions 빌드에서 25개 구 전부 '공식지수 없음'이 된 적이 있다.
+    이제 인구·세대와 똑같이 재시도 + 디스크 캐시를 쓰고, 실패하면 지난 값이라도 돌려준다.
+    """
     reb_code = REB_GU_CODE.get(gu)
     if not reb_code:
         return None
+
+    cache_name = f"priceindex-{SEOUL_GU.get(gu, gu)}.json"
+    cached = _cache_get(cache_name, PRICE_INDEX_TTL)
+    if cached:
+        return cached
+
     try:
         this_year = date.today().year
-        rows = _kosis_get({
+        rows = _kosis_get_retry({
             "orgId": "408", "tblId": "DT_KAB_11672_S5",
             "objL1": reb_code, "itmId": "T1", "prdSe": "Q",
             "startPrdDe": f"{this_year - 3}1", "endPrdDe": f"{this_year}4",
@@ -839,8 +852,19 @@ def fetch_price_index(gu: str) -> dict | None:
                 continue
             points.append({"period": f"{prd[:4]}Q{prd[4:]}", "value": round(v, 2)})
         points.sort(key=lambda p: p["period"])
-        return {"gu": gu, "unit": "2017.4Q=100", "points": points} if points else None
-    except Exception:
+        if not points:
+            raise RuntimeError("KOSIS가 빈 결과를 돌려줬습니다(표 코드·기간 확인 필요)")
+        result = {"gu": gu, "unit": "2017.4Q=100", "points": points}
+        _cache_put(cache_name, result)
+        return result
+    except Exception as exc:
+        # 조용히 None을 돌려주면 왜 비었는지 알 길이 없어 원인 파악이 늦어진다.
+        print(f"      ! {gu} 공식지수 조회 실패: {exc}")
+        # 기한이 지났더라도 지난 값이 있으면 그걸 쓴다 — 분기 통계라 하루이틀 묵어도 쓸 만하다.
+        stale = _cache_get(cache_name, None)
+        if stale:
+            print(f"        (직전 캐시 사용)")
+            return stale
         return None
 
 
