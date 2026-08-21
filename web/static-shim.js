@@ -158,14 +158,20 @@
       btn3m.classList.add('is-on');
     }
 
-    // 안내 문구 — 며칠 전 자료인지 바로 알 수 있게
-    const daysOld = Math.round((Date.now() - new Date(DATA.end + 'T00:00:00')) / 86400000);
-    const fresh = daysOld <= 1 ? '오늘 기준' : `${daysOld}일 전 기준`;
+    // 안내 문구 — 며칠 전 자료인지 바로 알 수 있게.
+    // 시각까지 빼면 "20일 자료를 21일 밤에 보는" 경우가 1.96일 -> 2일로 반올림되어
+    // 하루 더 묵은 것처럼 보인다. 날짜(자정) 기준으로만 뺀다.
+    const endDay = new Date(DATA.end + 'T00:00:00');
+    const now = new Date();
+    const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const daysOld = Math.round((today0 - endDay) / 86400000);
+    const fresh = daysOld <= 0 ? '오늘까지' : (daysOld === 1 ? '어제까지' : `${daysOld}일 전까지`);
     const note = document.createElement('div');
     note.style.cssText = 'font-size:11.5px;color:#35569e;background:#eef2fb;border:1px solid #cfdcf6;'
       + 'border-radius:8px;padding:7px 12px;margin:10px 26px 0;line-height:1.6;';
-    note.innerHTML = `자료 수록 기간 <b>${DATA.start} ~ ${DATA.end}</b> (${fresh}) · 매일 자동 갱신됩니다. `
-      + `이 범위 안에서 시작일·종료일과 빠른 기간을 자유롭게 바꿔 보실 수 있습니다.`;
+    note.innerHTML = `자료 수록 기간 <b>${DATA.start} ~ ${DATA.end}</b> (${fresh}) · 매일 새벽 자동 갱신됩니다. `
+      + `이 범위 안에서 시작일·종료일과 빠른 기간을 자유롭게 바꿔 보실 수 있습니다.<br />`
+      + `※ 실거래 신고 기한이 계약일로부터 30일이라 <b>최근 1~2개월치는 아직 다 올라오지 않았습니다</b> — 계속 늘어납니다.`;
     const controls = document.querySelector('.controls');
     if (controls) controls.insertAdjacentElement('afterend', note);
 
