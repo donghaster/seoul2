@@ -86,7 +86,12 @@
     const rawUrl = typeof input === 'string' ? input : input.url;
     const u = new URL(rawUrl, location.href);
 
-    if (u.pathname === '/api/deals') {
+    // file:// 로 직접 열면 '/api/deals'가 '/C:/api/deals'처럼 드라이브를 달고 나온다.
+    // 앞부분을 무시하고 끝의 API 이름만 보고 판단한다.
+    const hit = u.pathname.match(/\/api\/([a-z-]+)$/);
+    const api = hit ? hit[1] : '';
+
+    if (api === 'deals') {
       return dealsResponse(
         u.searchParams.get('gu') || 'all',
         u.searchParams.get('start'),
@@ -94,17 +99,17 @@
       );
     }
 
-    if (u.pathname === '/api/locinfo') {
+    if (api === 'locinfo') {
       const snap = DATA.gus[u.searchParams.get('gu')];
       return jsonResponse(snap && snap.locinfo ? snap.locinfo : null);
     }
 
-    if (u.pathname === '/api/price-index') {
+    if (api === 'price-index') {
       const snap = DATA.gus[u.searchParams.get('gu')];
       return jsonResponse(snap && snap.priceIndex ? snap.priceIndex : { available: false });
     }
 
-    if (u.pathname === '/api/geocode-batch') {
+    if (api === 'geocode-batch') {
       // 정적 스냅샷에서는 실시간 지오코딩이 불가능 — 이미 구운 geo-coords.js 좌표만 사용된다.
       return jsonResponse({ results: [] });
     }
