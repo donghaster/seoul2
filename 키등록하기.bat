@@ -1,13 +1,30 @@
 @echo off
-chcp 65001 > nul
 cd /d "%~dp0"
+title ÀÚµ¿ °»½Å¿ë Å° µî·Ï
 echo.
-echo   ìžë™ ê°±ì‹ ìš© í‚¤ ë“±ë¡ (í•œ ë²ˆë§Œ í•˜ë©´ ë©ë‹ˆë‹¤)
-echo   ------------------------------------------------
-echo   .envì˜ API í‚¤ë¥¼ GitHub ì €ìž¥ì†Œ ì‹œí¬ë¦¿ìœ¼ë¡œ ë“±ë¡í•©ë‹ˆë‹¤.
-echo   ë“±ë¡í•˜ë©´ ë§¤ì¼ ìƒˆë²½ 5ì‹œì— ì‹¤ê±°ëž˜ ìžë£Œê°€ ìžë™ìœ¼ë¡œ ê°±ì‹ ë©ë‹ˆë‹¤.
-echo   í‚¤ ê°’ì€ í™”ë©´ì— í‘œì‹œë˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
+echo   ÀÚµ¿ °»½Å¿ë Å° µî·Ï (ÇÑ ¹ø¸¸ ÇÏ¸é µË´Ï´Ù)
+echo   --------------------------------------------------
+echo   .envÀÇ API Å°¸¦ GitHub ÀúÀå¼Ò ½ÃÅ©¸´À¸·Î µî·ÏÇÕ´Ï´Ù.
+echo   µî·ÏÇÏ¸é ¸ÅÀÏ »õº® 5½Ã¿¡ ½Ç°Å·¡ ÀÚ·á°¡ ÀÚµ¿ °»½ÅµË´Ï´Ù.
+echo   Å° °ªÀº È­¸é¿¡ Ç¥½ÃµÇÁö ¾Ê½À´Ï´Ù.
 echo.
-py "setup_secrets.py"
+
+where py >nul 2>nul
+if errorlevel 1 goto NOPY
+where gh >nul 2>nul
+if errorlevel 1 goto NOGH
+
+py setup_secrets.py
+goto END
+
+:NOPY
+echo   [¿À·ù] PythonÀ» Ã£À» ¼ö ¾ø½À´Ï´Ù. Python 3À» ¼³Ä¡ÇÑ µÚ ´Ù½Ã ½ÇÇàÇÏ¼¼¿ä.
+goto END
+
+:NOGH
+echo   [¿À·ù] GitHub CLI(gh)¸¦ Ã£À» ¼ö ¾ø½À´Ï´Ù.
+echo   https://cli.github.com ¿¡¼­ ¼³Ä¡ÇÑ µÚ gh auth login À» ½ÇÇàÇÏ¼¼¿ä.
+
+:END
 echo.
 pause

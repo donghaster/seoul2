@@ -1,12 +1,27 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
-echo ê¸ˆì§‘ë¶€ìŒ¤ì˜ ì„œìš¸ì‹œ ì•„íŒŒíŠ¸ ì‹¤ê±°ëž˜ ëŒ€ì‹œë³´ë“œë¥¼ ì‹œìž‘í•©ë‹ˆë‹¤...
+title ±ÝÁýºÎ½ÜÀÇ ¼­¿ï½Ã ¾ÆÆÄÆ® ½Ç°Å·¡ ´ë½Ãº¸µå
 echo.
-start "" cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:8766"
-python server.py
-if errorlevel 1 (
-  echo.
-  echo [ì˜¤ë¥˜] python ì‹¤í–‰ì— ì‹¤íŒ¨í–ˆìŠµë‹ˆë‹¤. Python 3ê°€ ì„¤ì¹˜ë˜ì–´ ìžˆëŠ”ì§€ í™•ì¸í•˜ì„¸ìš”.
-  pause
-)
+echo   ±ÝÁýºÎ½ÜÀÇ ¼­¿ï½Ã ¾ÆÆÄÆ® ½Ç°Å·¡ ´ë½Ãº¸µå
+echo   --------------------------------------------------
+echo   Àá½Ã ÈÄ ºê¶ó¿ìÀú¿¡¼­ http://localhost:8766 ÀÌ ¿­¸³´Ï´Ù.
+echo   ½Ç½Ã°£ Á¶È¸ ¸ðµå¶ó ±â°£À» ÀÚÀ¯·Ó°Ô °í¸¦ ¼ö ÀÖ½À´Ï´Ù.
+echo.
+echo   * ÀÌ Ã¢À» ´ÝÀ¸¸é ¼­¹ö°¡ ²¨Áý´Ï´Ù.
+echo.
+
+where py >nul 2>nul
+if errorlevel 1 goto NOPY
+
+rem ¼­¹ö°¡ ¶ã ½Ã°£À» 3ÃÊ ÁØ µÚ ºê¶ó¿ìÀú¸¦ ¿¬´Ù
+start "" /min powershell -NoProfile -Command "Start-Sleep 3; Start-Process 'http://localhost:8766'"
+py server.py
+goto END
+
+:NOPY
+echo   [¿À·ù] PythonÀ» Ã£À» ¼ö ¾ø½À´Ï´Ù.
+echo   https://www.python.org ¿¡¼­ Python 3À» ¼³Ä¡ÇÑ µÚ ´Ù½Ã ½ÇÇàÇÏ¼¼¿ä.
+
+:END
+echo.
+pause
