@@ -15,6 +15,11 @@ on:
 permissions:
   contents: write
 
+# 러너는 UTC라 그냥 두면 date.today()가 한국보다 하루 뒤처져
+# 스냅샷 종료일이 "어제"로 굳는다. 한국 시간으로 맞춘다.
+env:
+  TZ: Asia/Seoul
+
 concurrency:
   group: refresh-snapshot
   cancel-in-progress: false
